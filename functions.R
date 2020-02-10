@@ -1,5 +1,5 @@
-
-
+library(tidyverse)
+library(yarrr)
 # NOTES 
 # code from proceedings paper, needs to be adjusted
 #
@@ -100,19 +100,23 @@ f.Einstein.conv <- function(irrad.data, wavelength.range.nm, integr.time.musec){
 ratio.A1_A2 <- c(1,0)
 if(sum(ratio.A1_A2) != 1) print("WARNING: A1-A2 ratio is not 1!!!")
 
-# functie to calculate lambda max
-# "SWS1" "SWS2" "RH2"  "LWS"
-opsin.max.range <- matrix(NA, nrow = 4, ncol = 2)
+# function to calculate lambda max
+opsin.max.range <- matrix(NA, nrow = 9, ncol = 2)
 rownames(opsin.max.range) <- opsin.names
 colnames(opsin.max.range) <- c("A1_0", "A1_1")
-opsin.max.range[1,] <- c(382, 365 )
-opsin.max.range[2,] <- c(441, 434)
-opsin.max.range[3,] <- c(546, 514)
-opsin.max.range[4,] <- c(638, 566)
+opsin.max.range[1,] <- c(571, 571 ) #For LWS-S
+opsin.max.range[2,] <- c(516, 516)
+opsin.max.range[3,] <- c(519, 519)
+opsin.max.range[4,] <- c(NA, NA)
+opsin.max.range[5,] <- c(516, 516 )
+opsin.max.range[6,] <- c(476, 476)
+opsin.max.range[7,] <- c(438, 438)
+opsin.max.range[8,] <- c(408, 408)
+opsin.max.range[9,] <- c(353, 353)
 
 f.calc.lamba.max <- function(A1.proportion){
-  l.max.temp <- rep(NA,4)
-  for(l.m in 1:4) l.max.temp[l.m] <- opsin.max.range[l.m, 1] + ((opsin.max.range[l.m, 2] - opsin.max.range[l.m, 1]) * A1.proportion)
+  l.max.temp <- rep(NA,9)
+  for(l.m in 1:9) l.max.temp[l.m] <- opsin.max.range[l.m, 1] + ((opsin.max.range[l.m, 2] - opsin.max.range[l.m, 1]) * A1.proportion)
   return(l.max.temp)
 }
 
@@ -181,17 +185,19 @@ A2.beta.f <- function(y, lambda_max) {
 
 # the calculations use lambda_max/wavelength value (vectore of values for wavelength of interest range)
 # specific for each opsin (each on one row)
-A.alpha.input <- matrix(NA, 4, length(wave.length.range))
-for(i in 1:4) A.alpha.input[i, ] <- opsin.l.max[i]/wave.length.range
+wave.length.range <- seq(350,700)
+wave.length.range <- wavelength.range
+A.alpha.input <- matrix(NA, 9, length(wave.length.range))
+for(i in 1:9) A.alpha.input[i, ] <- opsin.l.max[i]/wave.length.range
 rownames(A.alpha.input) <- opsin.names
 colnames(A.alpha.input) <- wave.length.range 
 
-# make storage for 4 absorbance measures for all 4 opsins
+# make storage for 9 absorbance measures for all 9 opsins
 function.names <- c("A1.alpha", "A1.beta","A2.alpha","A2.beta")
-A1.alpha <- A1.beta <- A2.alpha <- A2.beta <- matrix(NA, 4, length(wave.length.range))
+A1.alpha <- A1.beta <- A2.alpha <- A2.beta <- matrix(NA, 9, length(wave.length.range))
 rownames(A1.alpha) <- rownames(A1.beta ) <- rownames(A2.alpha) <- rownames(A2.beta) <- opsin.names
 colnames(A1.alpha) <- colnames(A1.beta ) <- colnames(A2.alpha) <- colnames(A2.beta) <- wave.length.range 
-A1.alpha[,1:4]
+A1.alpha[,1:9]
 
 # this can be coded more elegantly.....
 # c("LWS","RH2","SWS1","SWS2")
@@ -206,24 +212,27 @@ for(i in 1:length(opsin.names)) A2.beta[i,] <- A2.beta.f(wave.length.range, opsi
 
 # four matrices each for one of the bands
 # multiply each by their ration (weight) and sum them into a final new matrix
-opsin.absorbance <- matrix(NA, 4, length(wave.length.range))
+opsin.absorbance <- matrix(NA, 9, length(wave.length.range))
 rownames(opsin.absorbance) <- opsin.names
 colnames(opsin.absorbance) <- wave.length.range
 for(i in 1:length(opsin.names)) opsin.absorbance[i,] <- c((ratio.A1_A2[1] * A1.alpha[i,]) + (ratio.A1_A2[1] * A1.beta[i,]) + (ratio.A1_A2[2] * A2.alpha[i,]) + (ratio.A1_A2[2] * A2.beta[i,]))
 
-pdf(paste(path.figures.subdir[5],"absorbance.curves.opsins.prop.A1_", ratio.A1_A2[1],".pdf",sep=""), 5, 5)
-ylim <- c(0,max(opsin.absorbance))
-xlim <- range(wave.length.range)
-main.t <- paste("lambda max: SWS1 = ",opsin.l.max[1], " SWS2 = ",opsin.l.max[2], " SRH2 = ",opsin.l.max[3]," LWS = ", opsin.l.max[4],sep = "")
-plot( NA, ylim=ylim, xlim=xlim, ylab = "Absorbance", xlab="Wavelength (nm)", main = main.t, cex.main = 0.8,las=1)
-for(i in 1:length(opsin.names)) {
-  lines(wave.length.range, opsin.absorbance[i,], col=opsin.col[i] )
-  text(opsin.l.max[i], 0.8, opsin.names[i],col=opsin.col[i])
-}
-abline(v=450, lty = "dashed")
+
+
+basel_palette <- unname(piratepal(palette = "basel"))
+pdf(paste(path.fig.subdir[4],"absorbance.curves.opsins.prop.A1_", ratio.A1_A2[1],".pdf",sep=""), 5, 5)
+opsin.absorbance.tibble <- as.tibble(opsin.absorbance)
+opsin.absorbance.tibble$opsin <- row.names(opsin.absorbance)
+opsin.absorbance.tibble <- opsin.absorbance.tibble %>%
+  pivot_longer(-opsin, names_to = "lambda", values_to = "absorbance") 
+opsin.absorbance.tibble %>%
+  ggplot(.,aes(x=as.numeric(lambda),y=absorbance,group=opsin,color=opsin)) + geom_line(size=2) +
+  scale_color_manual(values=basel_palette,name="Opsin") +
+  ylab("Absorbance") + xlab("Lambda")
+
 dev.off()
 
-write.csv(opsin.absorbance, paste(path.output.data.subdir[3],"absorbance.prop.A1_",ratio.A1_A2[1],".csv", sep=""))
+write.csv(opsin.absorbance, paste("output/opsin/","absorbance.prop.A1_",ratio.A1_A2[1],".csv", sep=""))
 
 
 # ============================================================================================

@@ -1,1 +1,10 @@
-﻿Locality,Drainage,H2S,Species,Informal NameBaños del Azufre,Pichucalco,1,Poecilia mexicana,BanosEl Azufre,Tacotalpa,1,Poecilia mexicana,PS0Rio Ixtapangajoya ,Ixtapangajoya,0,Poecilia mexicana,NALa Esperanza,Ixtapangajoya,1,Poecilia thermalis,NALa Gloria ,Pichucalco,1,Poecilia sulphuraria,NALa Luvia,Puyacatengo,1,Poecilia mexicana,La Lluvia small springArroyo Bonita,Tacotalpa,0,Poecilia mexicana,Rio El Azufre,Pichucalco,0,Poecilia mexicana,Vet stationRio Puyacatengo,Puyacatengo,0,Poecilia mexicana,Vicente Guerrero
+﻿Locality,Drainage,H2S,Species,Informal_Name,ID,Fieldsite.ID
+Baños del Azufre,Pichucalco,1,Poecilia mexicana,Banos,Ban,NA
+El Azufre,Tacotalpa,1,Poecilia mexicana,PS0,PS0,MT14-21
+Rio Ixtapangajoya ,Ixtapangajoya,0,Poecilia mexicana,NA,Ixt,MT14-17
+La Esperanza,Ixtapangajoya,1,Poecilia thermalis,NA,Esp,MT14-13
+La Gloria ,Pichucalco,1,Poecilia sulphuraria,NA,Glo,MT14-29
+La Luvia,Puyacatengo,1,Poecilia mexicana,La Lluvia small spring,lal,MT14-27
+Arroyo Bonita,Tacotalpa,0,Poecilia mexicana,NA,Lab,MT14-26
+Rio El Azufre,Pichucalco,0,Poecilia mexicana,Vet station,VS,MT14-11
+Rio Puyacatengo,Puyacatengo,0,Poecilia mexicana,Vicente Guerrero,VG,MT14-28

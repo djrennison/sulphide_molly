@@ -33,12 +33,13 @@
 
 library(zoo)
 
+
 # === General variables ====
 names.irr.axis <- c("wavelength", "intensity")
 # rolling mean
 window.w <- 5		# the size to the left/right of vocal point over which mean is taken
 # irradiance median and for transmission
-irr.depth <- 50
+irr.depth <- 10
 light.type.tr <- "s" # what light to use: s = sidewelling, u = upwelling, d = downwelling
 exclude.bottom <- FALSE   # use samples when probe was at the bottom
 
@@ -52,7 +53,7 @@ irr.all <- vector("list", length(irr.pop.names))
 names(irr.all) <- irr.pop.names
 
 # names for the columns of the overview irradiance file
-irr.file.names <- c("population", "file.name", "light", "depth", "integr.time")  
+irr.file.names <- c("population","sample.location", "file.name", "light", "depth", "integr.time")  
   
 for(i in 1:length(irr.pop.names)){
   print(i)
@@ -75,6 +76,8 @@ for(i in 1:length(irr.pop.names)){
     # update the meta data in the irrad.temp file
     # population
     irrad.temp$population[j] <- gsub( "-.*", "", file.names[j])
+    # sample location
+    irrad.temp$sample.location[j] <- gsub(".*-", "", gsub( "_.*", "", file.names[j]))
     # file.name
     irrad.temp$file.name[j] <- file.names[j] 
     
@@ -123,10 +126,16 @@ for(i in 1:length(irr.pop.names)){
 
 # combine th irradiances irradiance into on big file
 irr.all.smooth <- do.call("rbind", irr.all)
-str(irr.all.smooth)
-irr.all.smooth[1:30,1:10]
 
-irr.all.smooth$population
+#Check irradiance measures:
+as.tibble(irr.all.smooth) %>%
+  pivot_longer(c(-population,-sample.location,-file.name,-light,-depth,-integr.time),
+               "lambda",values_to="irradiance") %>%
+  filter(light == "s",depth == 10, population == "Ixt" | population == "Esp") %>% View()
+  ggplot(.,aes(x=as.numeric(lambda),y=irradiance,group=file.name)) + 
+  geom_line() +
+  facet_wrap(~population)
+
 
 # write data files as temp for now
 write.csv(irr.all.smooth, paste( path.output.irr, "irr.all.smooth.w=", window.w, ".csv", sep = ""), row.names = FALSE)
@@ -141,10 +150,24 @@ irr.all.smooth.norm <- cbind.data.frame(irr.all.smooth[, c(1:length(irr.file.nam
 write.csv(irr.all.smooth.norm, paste( path.output.irr, "irr.all.smooth.normalised.w=", window.w, ".csv", sep = ""), row.names = FALSE)
 
 
+as.tibble(irr.all.smooth.norm)
+
+
 # make figures for each location
 depth.tmp <- 10
 light.tmp <- "d"
 pops <- unique(irr.all.smooth.norm$population)
+
+
+irr.all.smooth.norm.tibble <- as.tibble(irr.all.smooth.norm) %>%
+  pivot_longer(c(-population,-sample.location,-file.name,-light,-depth,-integr.time),
+               "lambda",values_to="irradiance")
+
+irr.all.smooth.norm.tibble %>%
+  filter(light=="s") %>%
+  ggplot(.,aes(x=as.numeric(lambda),y=irradiance,color=depth,group=file.name)) +
+  geom_line() + 
+  facet_grid(sample.location~population) + scale_color_distiller(palette = "RdYlBu")
 for(i in 1:length(pops)){
   #i <- 1
   data.t <- irr.all.smooth.norm[irr.all.smooth.norm$population == pops[i],]
@@ -180,7 +203,7 @@ for(i in 1:length(pops)){
 #
 # XX steps
 # 1) calculate the kd from the smooth irradiance data
-# 2) determine odd outlier kd values indivating wrong curve fitting and
+# 2) determine odd outlier kd values indicating wrong curve fitting and
 #     replace this values with the mean of the sliding window
 # 3) get the median, and compare all pops and ones without the odd ones
 # 4) sliding window to smooth Kd
@@ -199,29 +222,30 @@ for(i in 1:length(pops)){
 #
 #
 
-# counter which goes through all irradiance files (may ue the belwo function multiple times )
+# counter which goes through all irradiance files (may be the below function multiple times )
 # This function is for a single site
 params <- c(0, 10, 4000)
 f.calc.transmission.old.code <- function(irrad.data, params){
-  # params <- params
-  # irrad.data <- irr.Kirk
+   #params <- params
+   #irrad.data <- irr.Ban
   trans.cntr <- 1
   
-  site.names.1 <- unique(irrad.data$site.name)
+  site.names.1 <- unique(irrad.data$pop)
   loc.names.1 <- unique(irrad.data$sample.location)
+  #Remove surf location
+  loc.names.1 <- loc.names.1[loc.names.1 != "surf"]
   
   # make data frame for storage
-  trans.names <- c(c("site.name","sample.location","light","n.measures","at.bottom","nls.converged","pelagic"))
-  transm.overview.k <- transm.overview.SS <- as.data.frame(matrix(NA, ncol = (length(trans.names) + length(wave.length.range.temp)), nrow = length(loc.names.1)))
-  colnames(transm.overview.k) <- colnames(transm.overview.SS) <- c(trans.names, wave.length.range.temp)
+  trans.names <- c(c("site.name","sample.location","light","n.measures","at.bottom","nls.converged"))
+  transm.overview.k <- transm.overview.SS <- as.data.frame(matrix(NA, ncol = (length(trans.names) + length(wavelength.range)), nrow = length(loc.names.1)))
+  colnames(transm.overview.k) <- colnames(transm.overview.SS) <- c(trans.names, wavelength.range)
   
   for(i in 1:length(site.names.1)){
-    # i <- 1
-    data.t <- irrad.data[irrad.data$site.name == site.names.1[i],]
-    loc.names.1 <- unique(data.t$sample.location)
+     #i <- 1
+    data.t <- irrad.data[irrad.data$pop == site.names.1[i],]
     for(j in 1:length(loc.names.1)){
       print(j)
-      # j <- 1
+      #j <- 1
       # select data
       data.t.1 <- data.t[data.t$sample.location == loc.names.1[j],]
       data.t.2 <- data.t.1[data.t.1$light == light.type.tr, ]
@@ -234,11 +258,11 @@ f.calc.transmission.old.code <- function(irrad.data, params){
       transm.overview.k$light[trans.cntr] <- transm.overview.SS$light[trans.cntr] <- light.type.tr
       transm.overview.k$n.measures[trans.cntr] <- transm.overview.SS$n.measures[trans.cntr] <- nrow(data.t.3)   
       transm.overview.k$at.bottom[trans.cntr] <- transm.overview.SS$at.bottom[trans.cntr] <- exclude.bottom
-      transm.overview.k$pelagic[trans.cntr] <- transm.overview.SS$pelagic[trans.cntr] <- data.t.3$pelagic[1]
+      #transm.overview.k$pelagic[trans.cntr] <- transm.overview.SS$pelagic[trans.cntr] <- data.t.3$pelagic[1]
       
       # calculate the transmission coef for each wavelength
       #str(data.t.3)
-      for(k in 1:length(wave.length.range.temp)){
+      for(k in 1:length(wavelength.range)){
         print(k)
         # k <- 1
         # simplify variables: need depth (x.t) and intensity (y.t)
@@ -254,10 +278,10 @@ f.calc.transmission.old.code <- function(irrad.data, params){
         transm.overview.SS[trans.cntr, (length(trans.names) + k)] <- sum(resid(funct)^2)
         
         # plot the data and the fitted curve
-        pred.funct <- function(x.s) {coef(funct)[2] * exp(-coef(funct)[1] * x.s)}
-        x.s <- seq(min(x.t), max(x.t), 0.1)
-        plot(x.t, y.t, xlab = "Depth",ylab = "Intensity", pch = 19)
-        lines(x.s, pred.funct(x.s), col = "red")
+        #pred.funct <- function(x.s) {coef(funct)[2] * exp(-coef(funct)[1] * x.s)}
+        #x.s <- seq(min(x.t), max(x.t), 0.1)
+        #plot(x.t, y.t, xlab = "Depth",ylab = "Intensity", pch = 19)
+        #lines(x.s, pred.funct(x.s), col = "red")
       }
       
       # next sample location
@@ -274,116 +298,61 @@ f.calc.transmission.old.code <- function(irrad.data, params){
   # end of function
 }  
 
-# === Kirk
-irr.K <- irr.all.smooth[irr.all.smooth$site.name == "Kirk",]
-k.K <- f.calc.transmission.old.code(irr.Kirk, params)
-tK <- k.K[[1]]
-med.K <- fig.light.measures(tK, wave.length.range.temp, 3, "check.kd.all.")
-# some weird extreme outliers
 
-# === Little.Campbell.River
-irr.LC <- irr.all.smooth[irr.all.smooth$site.name == "Little.Campbell.River",]
-k.LC <- f.calc.transmission.old.code(irr.LC, params)
-tLC <- k.LC[[1]]
-med.LC <- fig.light.measures(tLC, wave.length.range.temp, 3, "check.kd.all.")
-# looks good
-
-# === "Oyster"
-irr.O <- irr.all.smooth[irr.all.smooth$site.name == "Oyster",]
-k.O <- f.calc.transmission.old.code(irr.O, params)
-tO <- k.O[[1]]
-med.O <- fig.light.measures(tO, wave.length.range.temp, 3, "check.kd.all.")
-# 02 and 05 are way off
-
-# === "Paxton"
-irr.Pa <- irr.all.smooth[irr.all.smooth$site.name == "Paxton",]
-k.Pa <- f.calc.transmission.old.code(irr.Pa, params)
-tPa <- k.Pa[[1]]
-med.Pa <- fig.light.measures(tPa, wave.length.range.temp, 3, "check.kd.all.")
-# some extreme outlier in extreme low nm, otehrwise good
-
-# === "Priest"
-irr.Pr <- irr.all.smooth[irr.all.smooth$site.name == "Priest",]
-k.Pr <- f.calc.transmission.old.code(irr.Pr, params)
-tPr <- k.Pr[[1]]
-med.Pr <- fig.light.measures(tPr, wave.length.range.temp, 3, "check.kd.all.")
-# some extreme variation
-
-# === "Trout"
-irr.T <- irr.all.smooth[irr.all.smooth$site.name == "Trout",]
-k.T <- f.calc.transmission.old.code(irr.T, params)
-tT <- k.T[[1]]
-med.T <- fig.light.measures(tT, wave.length.range.temp, 3, "check.kd.all.")
-
-# - merge each of the two output files (k and SS error) across all populations - 
-# 
-ctr.1 <- 1
-overview.k <- rbind(k.K[[ctr.1]], k.LC[[ctr.1]], k.O[[ctr.1]], k.Pa[[ctr.1]], k.Pr[[ctr.1]], k.T[[ctr.1]] )
-ctr.2 <- 2
-overview.SS <- rbind(k.K[[ctr.1]], k.LC[[ctr.1]], k.O[[ctr.1]], k.Pa[[ctr.1]], k.Pr[[ctr.1]], k.T[[ctr.1]] )
-
-kd.all <- f.get.median(overview.k, wave.length.range.temp)
-
-# --- 2) check for outliers calculate kd -------
-# use the figures made above and output of the negative values 
-# Kirk
-tK[1,]
-tK[6,]
-
-K.out <- c("Kirk.01", "Kirk.06") 
-# Little Campbell
-# looks fine
-
-# Oyster
-tO[2,]
-tO[5,]
-O.out <- c("Oyster.02", "Oyster.05")
-# both are very large values => remove 2 and 5
-
-# Paxton
-# looks fine
-
-# Priest
-tPr[6,]
-plot(unlist(tPr[6,-c(1:7)]))
-tPr[8,]
-plot(unlist(tPr[8,-c(1:7)]))
-out.Pr <- c("Priest.06", "Priest.08")
-
-# Trout
-# looks ok
-rows.weird.Kd.names <- c(K.out, O.out, out.Pr)
-
-# --- 3) compare both approached -------
-# determine which rows have weird value and need to be excluded
-overv.K.merge <- paste(overview.k$site.name,overview.k$sample.location, sep = ".")
-rows.weird.Kd <- match(rows.weird.Kd.names, overv.K.merge)
-
-# exclude these values to check the effect on the median
-overview.k.select <- overview.k[-rows.weird.Kd,]
-kd.select <- f.get.median(overview.k.select, wave.length.range.temp)
-# compare both approaches
-plot(NA, xlim = range(wave.length.range.temp), ylim = c(-0.005, 0.005), las = 1)
-for(i in 1:nrow(kd.select)) lines(wave.length.range.temp, (kd.all[i, -1] - kd.select[i,-1]) )
-# exlcuding does not change the median: still good to exlude the clearly odd ones I think both from the irradiance
-# and transmission files
-
-
-# NOT ANYMORE? There is a problem with some Inf values => first replace any inf with the mean of the value before and after
-# === replace Inf values with mean =====
-overview.k.t <- overview.k[,c((length(trans.names) + 1):ncol(overview.k))]
-ncol(overview.k.t)
-cntr.inf <- 0
-for(i in 1:nrow(overview.k.t)){
-  # hope the first input is not inf: so start at the second till the second last
-  for(j in 2:(ncol(overview.k.t) - 1)){
-     if(overview.k.t[i,j] == "Inf"){
-       overview.k.t[i,j] <- mean(overview.k.t[i,(j - 1)],overview.k.t[i,(j + 1)])
-       cntr.inf <- cntr.inf + 1
-     }   
-  }
+populations <- unique(irr.all.smooth$population)
+all_transmissions <- tibble(site.name=character(), sample.location=character(),
+                            light=character(), n.measures=integer(),
+                            nls.converged=character(), lambda=character(), 
+                            transmission=double(),
+                            transmission_ss=double())
+for (pop in populations){
+  tmp.irr <- irr.all.smooth[irr.all.smooth$population == pop,]
+  tmp.k <- f.calc.transmission.old.code(tmp.irr, params)
+  tmp.trans <- tmp.k[[1]]
+  tmp.trans <- tmp.trans %>%
+    dplyr::select(-at.bottom) %>%
+    pivot_longer(c(-site.name,-sample.location,-light,-n.measures,-nls.converged),
+                 names_to = "lambda", values_to = "transmission")
+  tmp.SS <- tmp.k[[2]]
+  tmp.SS <- tmp.SS %>%
+    dplyr::select(-at.bottom) %>%
+    pivot_longer(c(-site.name,-sample.location,-light,-n.measures,-nls.converged),
+                 names_to = "lambda", values_to = "transmission_ss")
+  all_transmissions <- rbind(all_transmissions, inner_join(tmp.SS,tmp.trans))
 }
-cntr.inf
+med.LC <- fig.light.measures(tLC, wave.length.range.temp, 3, "check.kd.all.")
+
+pdf(paste(path.fig.subdir[path.subdir], "check.kd.all","_light.type_", light.type.tr,"_w_", window.w,".irr.depth_",irr.depth,".pdf",sep=""), height = 20, width = 20)
+all_transmissions %>%
+  ggplot(.,aes(x=as.numeric(lambda),y=transmission,group=sample.location)) +
+  geom_line() + 
+  facet_grid(sample.location~site.name) +
+  ylab("Transmission") + xlab("Lambda")
+dev.off()
+
+write_tsv(all_transmissions,paste0(path.output.transmission,"light.type_", light.type.tr,"_w_", window.w,".irr.depth_",irr.depth,"txt"))
+
+
+
+kd.all <- all_transmissions %>%
+  #Remove one outlier locations
+  filter(!(site.name == "VC" & sample.location == "4") ) %>%
+  group_by(site.name,light,lambda) %>%
+  dplyr::summarize(median_transmission = median(transmission)) 
+
+
+pdf(paste(path.fig.subdir[path.subdir], "check.kd.median","_light.type_", light.type.tr,"_w_", window.w,".irr.depth_",irr.depth,".pdf",sep=""), height = 20, width = 20)
+kd.all %>%
+  ggplot(.,aes(x=as.numeric(lambda),y=median_transmission)) +
+  geom_line() + 
+  facet_wrap(~site.name) +
+  ylab("Absorbance") + xlab("Lambda")
+dev.off()
+
+kd.all <- kd.all %>%
+  group_by(site.name) %>%
+  mutate(rolling_median_transmission=rollapply(median_transmission,(window.w*2),mean,align='left',fill=NA))
+
 
 # --- 4) sliding window to smooth Kd -------
 # - smoothen values and add columns to start and end to compensate for rollmean -
