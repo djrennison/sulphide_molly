@@ -21,6 +21,7 @@ absorbance %>%
   inner_join(meta_data %>% rename(site.name = ID)) %>%
   ungroup() -> absorbance.medians
 
+
 absorbance.medians %>%
   ggplot(.,aes(x=lambda,y=median_absorbance,group=site.name)) + 
   facet_wrap(~Drainage,scales="free_y") + 
@@ -95,6 +96,12 @@ color.medians <- color %>%
   ungroup()
 
 
+short.wave.reflectance <- color %>%
+  inner_join(meta_data %>% dplyr::select(ID,H2S,Drainage) %>% rename(population=ID)) %>%
+  filter(lambda <= 400) %>%
+  group_by(individual, population,H2S,Drainage,body.part) %>%
+  dplyr::summarise(short_reflectance = sum(mean_reflectance))
+
 
 color.medians.sulphuraria <- color.medians %>%
   filter(population == "VS" | population == "Glo") %>%
@@ -127,7 +134,7 @@ reference_sensitivity <- sensitivity %>%
 sensitivity %>%
   filter(lambda <= 400) %>%
   group_by(Identifier,Drainage,H2S) %>%
-  summarize(total_uv_sen = sum(lambda_sensitivity)) %>%
+  dplyr::summarize(total_uv_sen = sum(lambda_sensitivity)) %>%
   ggplot(.,aes(x=Drainage,y=total_uv_sen,color=as.factor(H2S))) + geom_boxplot()
 sensitivity.differences <- sensitivity %>%
   inner_join(meta_data %>% dplyr::select(Fieldsite.ID,H2S)) %>%

@@ -111,8 +111,9 @@ col.all.smooth <- col.all.smooth %>%
 
 
 # write data files as temp for now
-write.csv(col.all.smooth, paste( path.output.colour, "colour.all.smooth.w=", window.w.col, ".csv", sep = ""), row.names = FALSE)
+#write.csv(col.all.smooth, paste( path.output.colour, "colour.all.smooth.w=", window.w.col, ".csv", sep = ""), row.names = FALSE)
 
+col.all.smooth <- read_csv( paste( path.output.colour, "colour.all.smooth.w=", window.w.col, ".csv", sep = ""))
 #Check to see how many measures are negative
 col.all.smooth %>%
   pivot_longer(c(-individual,-population,-sex,-body.part,-file.name,-rep),
@@ -123,7 +124,7 @@ col.all.smooth %>%
 
 # Remove measures with more than 5 negative lambda values. Then replace negative reflectance values with 0.
 
-col.all.smooth <- col.all.smooth %>%
+col.all.smooth.filt <- col.all.smooth %>%
   pivot_longer(c(-individual,-population,-sex,-body.part,-file.name,-rep),
                names_to = "lambda",values_to="reflectance") %>%
   group_by(file.name) %>%
@@ -133,8 +134,14 @@ col.all.smooth <- col.all.smooth %>%
                                  TRUE ~ reflectance)) %>%
   dplyr::select(-count)
 
+#Write non-normalized to file
+#write.csv(col.all.smooth.filt, paste( path.output.colour, "colour.all.smooth.filt.w=", window.w.col, ".csv", sep = ""), row.names = FALSE)
+col.all.smooth.filt <- read.tsv(paste( path.output.colour, "colour.all.smooth.filt.w=", window.w.col, ".csv", sep = ""))
   
-col.all.smooth.norm <- col.all.smooth %>%
+
+
+
+col.all.smooth.norm <- col.all.smooth.filt %>%
   group_by(population,file.name,individual,sex,body.part,rep) %>%
   mutate(sum_reflectance=sum(reflectance),norm_reflectance=reflectance/sum_reflectance) %>%
   dplyr::select(-reflectance,-sum_reflectance)
@@ -247,7 +254,7 @@ for (chosen.body.part in body.parts){
                     center = TRUE,scale. = TRUE)
   pca.loadings <- as.tibble(all.pca$rotation)
   pca.loadings$lambda <- row.names(all.pca$rotation)
-  pca.loadings <- pca.loadings %>% select(PC1, lambda) %>% 
+  pca.loadings <- pca.loadings %>% dplyr::select(PC1, lambda) %>% 
     mutate(body_part = chosen.body.part) %>%
     rename(pc1_loading = PC1)
   all_loadings <- rbind(all_loadings,pca.loadings)
@@ -402,7 +409,7 @@ plots_part1 / plots_part2 / plots_part3 / plots_part4
 
 
 all_loadings %>%
-  ggplot(.,aes(x=as.numeric(lambda),y=abs(pc1_loading),color=body_part,linetype=sex)) + geom_line()
+  ggplot(.,aes(x=as.numeric(lambda),y=abs(pc1_loading),color=body_part)) + geom_line()
 
 
 all.pca.tibble <- as.tibble(all.pca$x[,c(1:6)])

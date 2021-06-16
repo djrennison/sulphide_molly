@@ -128,18 +128,30 @@ for(i in 1:length(irr.pop.names)){
 irr.all.smooth <- do.call("rbind", irr.all)
 
 #Check irradiance measures:
+pdf("figures/irradiance/all_irradiance.v1.pdf",height=15,width=18)
 as.tibble(irr.all.smooth) %>%
   pivot_longer(c(-population,-sample.location,-file.name,-light,-depth,-integr.time),
                "lambda",values_to="irradiance") %>%
-  filter(light == "s",depth == 10, population == "Ixt" | population == "Esp") %>% View()
-  ggplot(.,aes(x=as.numeric(lambda),y=irradiance,group=file.name)) + 
-  geom_line() +
-  facet_wrap(~population)
-
+  filter(light == "s") %>% 
+  filter(lambda > 350) %>%
+  mutate(population = case_when(population == "Vet" ~ "VS",
+                                population == "Exp" ~ "Esp",
+                                population == "lab" ~ "Lab",
+                                population == "VC" ~ "VG",
+                               TRUE ~ population)) %>%
+  inner_join(meta_data %>% rename(population=ID)) %>%
+  ggplot(.,aes(x=as.numeric(lambda),y=irradiance,group=file.name,color=depth)) + 
+  geom_line(alpha=0.5,size=1.2) +
+  facet_grid(sample.location~Locality) +
+  theme_cowplot() +
+  xlab("Wavelength") +
+  scale_color_distiller(palette = "RdYlBu") +
+  ylab("Irradiance")
+dev.off()
 
 # write data files as temp for now
 write.csv(irr.all.smooth, paste( path.output.irr, "irr.all.smooth.w=", window.w, ".csv", sep = ""), row.names = FALSE)
-
+irr.all.smooth <- read_csv(paste( path.output.irr, "irr.all.smooth.w=", window.w, ".csv", sep = ""))
 # normalised version
 # sum each row:
 sum.per.row <- apply(irr.all.smooth[, -c(1:length(irr.file.names))], 1, sum)
@@ -148,10 +160,18 @@ apply(irr.norm, 1, sum) # correct, all sum to 1 now
 irr.all.smooth.norm <- cbind.data.frame(irr.all.smooth[, c(1:length(irr.file.names))], irr.norm)
 # write to file
 write.csv(irr.all.smooth.norm, paste( path.output.irr, "irr.all.smooth.normalised.w=", window.w, ".csv", sep = ""), row.names = FALSE)
+irr.all.smooth.norm <- read_csv(paste( path.output.irr, "irr.all.smooth.normalised.w=", window.w, ".csv", sep = ""))
 
 
-as.tibble(irr.all.smooth.norm)
-
+as.tibble(irr.all.smooth.norm) %>%
+  pivot_longer(c(-population,-sample.location,-file.name,-light,-depth,-integr.time),
+               "lambda",values_to="irradiance") %>%
+  filter(light == "s") %>% 
+  ggplot(.,aes(x=as.numeric(lambda),y=irradiance,group=file.name,color=depth)) + 
+  geom_line() +
+  facet_grid(sample.location~population) +
+  theme_cowplot() +
+  xlab("Wavelength")
 
 # make figures for each location
 depth.tmp <- 10
@@ -330,15 +350,42 @@ all_transmissions %>%
   ylab("Transmission") + xlab("Lambda")
 dev.off()
 
-write_tsv(all_transmissions,paste0(path.output.transmission,"light.type_", light.type.tr,"_w_", window.w,".irr.depth_",irr.depth,"txt"))
+write_tsv(all_transmissions,paste0(path.output.transmission,"light.type_", light.type.tr,"_w_", window.w,".irr.depth_",irr.depth,".txt"))
 
+write_tsv(all_transmissions %>%   filter(!(site.name == "VC" & sample.location == "4") ) %>%
+            filter(lambda > 350),paste0(path.output.transmission,"filtered.light.type_", light.type.tr,"_w_", window.w,".irr.depth_",irr.depth,".txt"))
 
+all_transmissions <- read_tsv(paste0(path.output.transmission,"light.type_", light.type.tr,"_w_", window.w,".irr.depth_",irr.depth,"txt"))
+
+pdf("figures/transmission/all_transmission.v1.pdf",height=8,width=16)
+all_transmissions %>%
+  filter(!(site.name == "VC" & sample.location == "4") ) %>%
+  filter(lambda > 350) %>%
+  mutate(group_variable = paste0(site.name,sample.location)) %>%
+  mutate(site.name = case_when(site.name == "Vet" ~ "VS",
+                               site.name == "Exp" ~ "Esp",
+                               site.name == "lab" ~ "Lab",
+                               site.name == "VC" ~ "VG",
+                               TRUE ~ site.name)) %>%
+  inner_join(meta_data %>% rename(site.name=ID)) %>%
+  ggplot(.,aes(x=as.numeric(lambda),y=transmission,group=group_variable,color=as.factor(H2S))) + 
+  geom_line() +
+  facet_grid(sample.location~Locality) +
+  theme_cowplot() +
+  xlab("Wavelength") +
+  ylab("Absorbance") + 
+  scale_color_manual(values=color_palette_1,name="Sulphur",
+                    labels=c("Absent", "Present"))
+dev.off()
 
 kd.all <- all_transmissions %>%
   #Remove one outlier locations
+  filter(lambda > 350) %>%
   filter(!(site.name == "VC" & sample.location == "4") ) %>%
   group_by(site.name,light,lambda) %>%
   dplyr::summarize(median_transmission = median(transmission)) 
+
+write_tsv(kd.all,paste0(path.output.transmission,"filtered.light.type_", light.type.tr,"_w_", window.w,".irr.depth_",irr.depth,"txt"))
 
 
 pdf(paste(path.fig.subdir[path.subdir], "check.kd.median","_light.type_", light.type.tr,"_w_", window.w,".irr.depth_",irr.depth,".pdf",sep=""), height = 20, width = 20)
@@ -348,164 +395,164 @@ kd.all %>%
   facet_wrap(~site.name) +
   ylab("Absorbance") + xlab("Lambda")
 dev.off()
-
-kd.all <- kd.all %>%
-  group_by(site.name) %>%
-  mutate(rolling_median_transmission=rollapply(median_transmission,(window.w*2),mean,align='left',fill=NA))
-
-
-# --- 4) sliding window to smooth Kd -------
-# - smoothen values and add columns to start and end to compensate for rollmean -
-# taking a sliding window approach similar as done for the irradiance
-# get the rolling mean of the wavelength and the intensity
-k.roll.m <- overview.k[, c((ncol(overview.k) - length(wave.length.range.temp) + 1):ncol(overview.k))]
-overview.k.smooth <- as.data.frame(matrix(NA, ncol = ncol(k.roll.m) - window.w + 1, nrow = nrow(k.roll.m) ))
-for(i in 1:nrow(k.roll.m)) overview.k.smooth[i,] <- rollmean(unlist(k.roll.m[i,]), window.w)
-head(overview.k.smooth)
-overview.k.smooth[,1:10]
-wave.length.range.smooth <- wave.length.range.temp[-c(1:((window.w - 1)/2),((length(wave.length.range.temp) - ((window.w - 1)/2) + 1):length(wave.length.range.temp)) )]
-colnames(overview.k.smooth) <- wave.length.range.smooth
-# measurements with negative values => problem with normalisation: check if this is a problem
-rows.neg.Kd <- which(apply(overview.k.smooth, 1, min) < 0)
-rows.neg.Kd.names <- paste(overview.k$site.name[rows.neg.Kd], overview.k$sample.location[rows.neg.Kd], sep =".")
-# compare the effect of smoothing
-# exclude the effect of window from start and end
-w.effect <- (window.w -1 )/ 2
-k.orig.t <- k.roll.m[, -c(1:w.effect, ( (ncol(k.roll.m) - w.effect + 1):ncol(k.roll.m)))]
-plot(NA, xlim = range(wave.length.range.temp[-c(1:2, ((length(wave.length.range.temp) - 1):length(wave.length.range.temp)))]), ylim = c(-0.05, 0.05), las = 1)
-for(i in 1:nrow(overview.k.smooth)) lines( wave.length.range.temp[-c(1:2, ((length(wave.length.range.temp) - 1):length(wave.length.range.temp)))], (k.orig.t[i,] - overview.k.smooth[i,]) )
-# has quite an effect => good to keep the smoothing in
-
-# --- 5) adjust range and normalise the smooth Kd -------
-# --  (NOTE this will not go well with negative values, but we will exclude these at the end)
-# first adjust the wavelength rage from wave.length.range.temp to wave.length.range
-# wave.length.range.temp lost (window.w - 1)/2 from each side-> exclude the difference left with wave.length.range
-overview.k.smooth.t <- overview.k.smooth[, match(wave.length.range, wave.length.range.smooth)]
-ncol(overview.k.smooth.t)
-# normalise the k smooth overview file
-overview.k.smooth.norm <- as.data.frame(matrix(NA, nrow = nrow(overview.k.smooth.t), ncol = ncol(overview.k.smooth.t)))
-for(i in 1:nrow(overview.k.smooth.t)) overview.k.smooth.norm[i,] <- overview.k.smooth.t[i,]/sum(overview.k.smooth.t[i,]) 
-which(apply(overview.k.smooth.norm, 1, min) < 0)# same are negative as above, not surprising
-str(overview.k.smooth.norm)
-
-# ***standard***
-overview.k.smooth.1 <- as.data.frame(cbind(overview.k[,1:length(trans.names)], overview.k.smooth.t) )
-colnames(overview.k.smooth.1) <- c(trans.names, wave.length.range)
-  write.csv(overview.k.smooth.1, paste(path.output.data.subdir[2],"k.all.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-
-# get median
-median.k.all <- fig.light.and.median (overview.k.smooth.1, wave.length.range, 3, "k.smooth.all")
-  write.csv(median.k.all, paste(path.output.data.subdir[2],"median.k.all.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-
-
-# ***normalised k***
-overview.k.smooth.norm.1 <- as.data.frame(cbind(overview.k[,1:length(trans.names)], overview.k.smooth.norm) )
-colnames(overview.k.smooth.norm.1) <- c(trans.names, wave.length.range)
- write.csv(overview.k.smooth.norm.1, paste(path.output.data.subdir[2],"k.all.norm.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-# get median  
-median.k.all.norm <- fig.light.and.median(overview.k.smooth.norm.1, wave.length.range, 4, "k.smooth.norm.all.")
-  write.csv(median.k.all.norm, paste(path.output.data.subdir[2],"median.k.all.norm.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-
-# --- 6) exclude bad recordings and save final version (wave.length.range) -------
-# a) exclude the rows which are odd looking or go negative: do this for both the irradiance file and the transmission
-excl.rows <- sort(unique(c(rows.weird.Kd,rows.neg.Kd)))
-
-overview.k.smooth.s <- overview.k.smooth.1[-excl.rows,]
-  write.csv(overview.k.smooth.s, paste(path.output.data.subdir[2],"k.s.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-overview.k.smooth.norm.s <- overview.k.smooth.norm.1[-excl.rows,]
-  write.csv(overview.k.smooth.norm.s, paste(path.output.data.subdir[2],"k.s.norm.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-
-# median
-median.k.s <- fig.light.and.median(overview.k.smooth.s, wave.length.range, 3, "k.smooth.s.")
-  write.csv(median.k.s, paste(path.output.data.subdir[2],"median.k.s.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-median.k.s.norm <- fig.light.and.median(overview.k.smooth.norm.s, wave.length.range, 4, "k.smooth.norm.s.")
-  write.csv(median.k.s.norm, paste(path.output.data.subdir[2],"median.k.s.norm.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-
-# check how much the medians differ
-delta.m.s <- delta.m <- as.data.frame(matrix(NA, nrow=nrow(k.median), ncol = length(wave.length.range)))
-for(i in 1:nrow(k.median)) {
-  delta.m[i,] <- (k.median[i,-1] - k.median.s[i,-1])
-  delta.m.s[i,] <- (k.median.norm[i,-1] - k.median.norm.s[i,-1])
-}
-
-# the standard one => big effects when you remove the odd ones
-plot(NA, ylim = range(delta.m), xlim = range(wave.length.range), main = "difference standard - selected",las = 1)
-for(i in 1:nrow(k.median)) lines(wave.length.range, delta.m[i,])
-# the normalised one => small effect
-plot(NA, ylim = range(delta.m.s), xlim = range(wave.length.range), main = "difference norm - norm selected",las = 1)
-for(i in 1:nrow(k.median)) lines(wave.length.range, delta.m.s[i,])
-
-# write data files as temp for now
-#write.csv(overview.k.smooth, paste(path.output.data.subdir[1],"trans.all.smooth.temp.light_",light.type.tr,"_excl.bottom_",exclude.bottom,"_w=",window.w,".csv",sep = ""), row.names = FALSE)
-
-# ==== C finalise clean up and normalisation and write irradiance final files =======================================
-# prepare files to be saved
-# - shorten wavelength range to wave.length.range if needed
-# - calculate the median irradiance and normalised 
-
-# --- irradiance ----
-# which position is wave.length.range within  wave.length.range.temp
-wave.pos <- match(wave.length.range, wave.length.range.temp)
-# has all, raw irradiance data in it
-irr.all.smooth.all <- irr.all.smooth[ ,c(1:length(irr.file.names), c(length(irr.file.names) + wave.pos))]
-write.csv(irr.all.smooth.all, paste(path.output.data.subdir[1],"irr.all.smooth.all.excl.bottom_",exclude.bottom,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-
-# make a normalised version
-irr.t.n <- irr.t <- irr.all.smooth.all[,c((length(irr.file.names) + 1):ncol(irr.all.smooth.all))]
-for(i in 1:nrow(irr.s)) irr.t.n[i,] <- irr.t[i,]/sum(irr.t[i,]) 
-irr.all.smooth.norm.all <- as.data.frame(cbind(irr.all.smooth.all[,c(1:length(irr.file.names))], irr.t.n))
-head(irr.all.smooth.norm.all)
-# check normalised => all good
-apply(irr.all.smooth.norm.all[, c((ncol(irr.all.smooth.norm.all) - length(wave.length.range) + 1):ncol(irr.all.smooth.norm.all))], 1, sum)
-write.csv(irr.all.smooth.norm.all, paste(path.output.data.subdir[1],"irr.all.smooth.norm.all.excl.bottom_",exclude.bottom,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-
-# make the version where the odd transmission samples are left out
-names.to.be.removed <- sort(unique(c(rows.weird.Kd.names, rows.neg.Kd.names)))
-names.irr.file <- paste(irr.all.smooth.all$site.name, irr.all.smooth.all$sample.location, sep=".")
-# determine which rows have to go
-rem.loc <- c()
-for(i in 1:length(names.to.be.removed)) rem.loc <- c(rem.loc, which(names.irr.file == names.to.be.removed[i]))
-
-# irradiance selected
-irr.all.smooth.s <- irr.all.smooth.all[-rem.loc, ]
-write.csv(irr.all.smooth.s, paste(path.output.data.subdir[1],"irr.all.smooth.s.excl.bottom_",exclude.bottom,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-
-irr.all.smooth.norm.s <- irr.all.smooth.norm.all[-rem.loc, ]
-head(irr.all.smooth.norm.s)
-write.csv(irr.all.smooth.norm.s, paste(path.output.data.subdir[1],"irr.all.smooth.norm.s.excl.bottom_",exclude.bottom,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-
-
-# get median irradiance for the four file types
-# ** all **
-# raw
-irr.t1 <- irr.all.smooth.all[irr.all.smooth.all$depth == irr.depth & irr.all.smooth.all$light == light.type.tr,]
-median.irr.all <- fig.light.and.median(irr.t1, wave.length.range, 1, "irr.all.smooth.")
-write.csv(median.irr.all, paste(path.output.data.subdir[1],"median.irr.all.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-# norm
-irr.t2 <- irr.all.smooth.norm.all[irr.all.smooth.norm.all$depth == irr.depth & irr.all.smooth.norm.all$light == light.type.tr,]
-median.irr.all.norm <- fig.light.and.median(irr.t2, wave.length.range, 2, "irr.all.smooth.norm")
-write.csv(median.irr.all.norm, paste(path.output.data.subdir[1],"median.irr.all.norm.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-
-# ** selection **
-# raw
-irr.t3 <- irr.all.smooth.s[irr.all.smooth.s$depth == irr.depth & irr.all.smooth.s$light == light.type.tr,]
-median.irr.s <- fig.light.and.median(irr.t3, wave.length.range, 1, "irr.s.smooth.")
-write.csv(median.irr.s, paste(path.output.data.subdir[1],"median.irr.s.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-# norm
-irr.t4 <- irr.all.smooth.norm.s[irr.all.smooth.norm.s$depth == irr.depth & irr.all.smooth.norm.s$light == light.type.tr,]
-median.irr.s.norm <- fig.light.and.median(irr.t4, wave.length.range, 2, "irr.s.smooth.norm")
-write.csv(median.irr.s.norm, paste(path.output.data.subdir[1],"median.irr.s.norm.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
-
-
-
-
-
-
-
-
-
-
-
+# 
+# kd.all <- kd.all %>%
+#   group_by(site.name) %>%
+#   mutate(rolling_median_transmission=rollapply(median_transmission,(window.w*2),mean,align='left',fill=NA))
+# 
+# 
+# # --- 4) sliding window to smooth Kd -------
+# # - smoothen values and add columns to start and end to compensate for rollmean -
+# # taking a sliding window approach similar as done for the irradiance
+# # get the rolling mean of the wavelength and the intensity
+# k.roll.m <- overview.k[, c((ncol(overview.k) - length(wave.length.range.temp) + 1):ncol(overview.k))]
+# overview.k.smooth <- as.data.frame(matrix(NA, ncol = ncol(k.roll.m) - window.w + 1, nrow = nrow(k.roll.m) ))
+# for(i in 1:nrow(k.roll.m)) overview.k.smooth[i,] <- rollmean(unlist(k.roll.m[i,]), window.w)
+# head(overview.k.smooth)
+# overview.k.smooth[,1:10]
+# wave.length.range.smooth <- wave.length.range.temp[-c(1:((window.w - 1)/2),((length(wave.length.range.temp) - ((window.w - 1)/2) + 1):length(wave.length.range.temp)) )]
+# colnames(overview.k.smooth) <- wave.length.range.smooth
+# # measurements with negative values => problem with normalisation: check if this is a problem
+# rows.neg.Kd <- which(apply(overview.k.smooth, 1, min) < 0)
+# rows.neg.Kd.names <- paste(overview.k$site.name[rows.neg.Kd], overview.k$sample.location[rows.neg.Kd], sep =".")
+# # compare the effect of smoothing
+# # exclude the effect of window from start and end
+# w.effect <- (window.w -1 )/ 2
+# k.orig.t <- k.roll.m[, -c(1:w.effect, ( (ncol(k.roll.m) - w.effect + 1):ncol(k.roll.m)))]
+# plot(NA, xlim = range(wave.length.range.temp[-c(1:2, ((length(wave.length.range.temp) - 1):length(wave.length.range.temp)))]), ylim = c(-0.05, 0.05), las = 1)
+# for(i in 1:nrow(overview.k.smooth)) lines( wave.length.range.temp[-c(1:2, ((length(wave.length.range.temp) - 1):length(wave.length.range.temp)))], (k.orig.t[i,] - overview.k.smooth[i,]) )
+# # has quite an effect => good to keep the smoothing in
+# 
+# # --- 5) adjust range and normalise the smooth Kd -------
+# # --  (NOTE this will not go well with negative values, but we will exclude these at the end)
+# # first adjust the wavelength rage from wave.length.range.temp to wave.length.range
+# # wave.length.range.temp lost (window.w - 1)/2 from each side-> exclude the difference left with wave.length.range
+# overview.k.smooth.t <- overview.k.smooth[, match(wave.length.range, wave.length.range.smooth)]
+# ncol(overview.k.smooth.t)
+# # normalise the k smooth overview file
+# overview.k.smooth.norm <- as.data.frame(matrix(NA, nrow = nrow(overview.k.smooth.t), ncol = ncol(overview.k.smooth.t)))
+# for(i in 1:nrow(overview.k.smooth.t)) overview.k.smooth.norm[i,] <- overview.k.smooth.t[i,]/sum(overview.k.smooth.t[i,]) 
+# which(apply(overview.k.smooth.norm, 1, min) < 0)# same are negative as above, not surprising
+# str(overview.k.smooth.norm)
+# 
+# # ***standard***
+# overview.k.smooth.1 <- as.data.frame(cbind(overview.k[,1:length(trans.names)], overview.k.smooth.t) )
+# colnames(overview.k.smooth.1) <- c(trans.names, wave.length.range)
+#   write.csv(overview.k.smooth.1, paste(path.output.data.subdir[2],"k.all.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# 
+# # get median
+# median.k.all <- fig.light.and.median (overview.k.smooth.1, wave.length.range, 3, "k.smooth.all")
+#   write.csv(median.k.all, paste(path.output.data.subdir[2],"median.k.all.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# 
+# 
+# # ***normalised k***
+# overview.k.smooth.norm.1 <- as.data.frame(cbind(overview.k[,1:length(trans.names)], overview.k.smooth.norm) )
+# colnames(overview.k.smooth.norm.1) <- c(trans.names, wave.length.range)
+#  write.csv(overview.k.smooth.norm.1, paste(path.output.data.subdir[2],"k.all.norm.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# # get median  
+# median.k.all.norm <- fig.light.and.median(overview.k.smooth.norm.1, wave.length.range, 4, "k.smooth.norm.all.")
+#   write.csv(median.k.all.norm, paste(path.output.data.subdir[2],"median.k.all.norm.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# 
+# # --- 6) exclude bad recordings and save final version (wave.length.range) -------
+# # a) exclude the rows which are odd looking or go negative: do this for both the irradiance file and the transmission
+# excl.rows <- sort(unique(c(rows.weird.Kd,rows.neg.Kd)))
+# 
+# overview.k.smooth.s <- overview.k.smooth.1[-excl.rows,]
+#   write.csv(overview.k.smooth.s, paste(path.output.data.subdir[2],"k.s.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# overview.k.smooth.norm.s <- overview.k.smooth.norm.1[-excl.rows,]
+#   write.csv(overview.k.smooth.norm.s, paste(path.output.data.subdir[2],"k.s.norm.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# 
+# # median
+# median.k.s <- fig.light.and.median(overview.k.smooth.s, wave.length.range, 3, "k.smooth.s.")
+#   write.csv(median.k.s, paste(path.output.data.subdir[2],"median.k.s.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# median.k.s.norm <- fig.light.and.median(overview.k.smooth.norm.s, wave.length.range, 4, "k.smooth.norm.s.")
+#   write.csv(median.k.s.norm, paste(path.output.data.subdir[2],"median.k.s.norm.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# 
+# # check how much the medians differ
+# delta.m.s <- delta.m <- as.data.frame(matrix(NA, nrow=nrow(k.median), ncol = length(wave.length.range)))
+# for(i in 1:nrow(k.median)) {
+#   delta.m[i,] <- (k.median[i,-1] - k.median.s[i,-1])
+#   delta.m.s[i,] <- (k.median.norm[i,-1] - k.median.norm.s[i,-1])
+# }
+# 
+# # the standard one => big effects when you remove the odd ones
+# plot(NA, ylim = range(delta.m), xlim = range(wave.length.range), main = "difference standard - selected",las = 1)
+# for(i in 1:nrow(k.median)) lines(wave.length.range, delta.m[i,])
+# # the normalised one => small effect
+# plot(NA, ylim = range(delta.m.s), xlim = range(wave.length.range), main = "difference norm - norm selected",las = 1)
+# for(i in 1:nrow(k.median)) lines(wave.length.range, delta.m.s[i,])
+# 
+# # write data files as temp for now
+# #write.csv(overview.k.smooth, paste(path.output.data.subdir[1],"trans.all.smooth.temp.light_",light.type.tr,"_excl.bottom_",exclude.bottom,"_w=",window.w,".csv",sep = ""), row.names = FALSE)
+# 
+# # ==== C finalise clean up and normalisation and write irradiance final files =======================================
+# # prepare files to be saved
+# # - shorten wavelength range to wave.length.range if needed
+# # - calculate the median irradiance and normalised 
+# 
+# # --- irradiance ----
+# # which position is wave.length.range within  wave.length.range.temp
+# wave.pos <- match(wave.length.range, wave.length.range.temp)
+# # has all, raw irradiance data in it
+# irr.all.smooth.all <- irr.all.smooth[ ,c(1:length(irr.file.names), c(length(irr.file.names) + wave.pos))]
+# write.csv(irr.all.smooth.all, paste(path.output.data.subdir[1],"irr.all.smooth.all.excl.bottom_",exclude.bottom,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# 
+# # make a normalised version
+# irr.t.n <- irr.t <- irr.all.smooth.all[,c((length(irr.file.names) + 1):ncol(irr.all.smooth.all))]
+# for(i in 1:nrow(irr.s)) irr.t.n[i,] <- irr.t[i,]/sum(irr.t[i,]) 
+# irr.all.smooth.norm.all <- as.data.frame(cbind(irr.all.smooth.all[,c(1:length(irr.file.names))], irr.t.n))
+# head(irr.all.smooth.norm.all)
+# # check normalised => all good
+# apply(irr.all.smooth.norm.all[, c((ncol(irr.all.smooth.norm.all) - length(wave.length.range) + 1):ncol(irr.all.smooth.norm.all))], 1, sum)
+# write.csv(irr.all.smooth.norm.all, paste(path.output.data.subdir[1],"irr.all.smooth.norm.all.excl.bottom_",exclude.bottom,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# 
+# # make the version where the odd transmission samples are left out
+# names.to.be.removed <- sort(unique(c(rows.weird.Kd.names, rows.neg.Kd.names)))
+# names.irr.file <- paste(irr.all.smooth.all$site.name, irr.all.smooth.all$sample.location, sep=".")
+# # determine which rows have to go
+# rem.loc <- c()
+# for(i in 1:length(names.to.be.removed)) rem.loc <- c(rem.loc, which(names.irr.file == names.to.be.removed[i]))
+# 
+# # irradiance selected
+# irr.all.smooth.s <- irr.all.smooth.all[-rem.loc, ]
+# write.csv(irr.all.smooth.s, paste(path.output.data.subdir[1],"irr.all.smooth.s.excl.bottom_",exclude.bottom,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# 
+# irr.all.smooth.norm.s <- irr.all.smooth.norm.all[-rem.loc, ]
+# head(irr.all.smooth.norm.s)
+# write.csv(irr.all.smooth.norm.s, paste(path.output.data.subdir[1],"irr.all.smooth.norm.s.excl.bottom_",exclude.bottom,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# 
+# 
+# # get median irradiance for the four file types
+# # ** all **
+# # raw
+# irr.t1 <- irr.all.smooth.all[irr.all.smooth.all$depth == irr.depth & irr.all.smooth.all$light == light.type.tr,]
+# median.irr.all <- fig.light.and.median(irr.t1, wave.length.range, 1, "irr.all.smooth.")
+# write.csv(median.irr.all, paste(path.output.data.subdir[1],"median.irr.all.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# # norm
+# irr.t2 <- irr.all.smooth.norm.all[irr.all.smooth.norm.all$depth == irr.depth & irr.all.smooth.norm.all$light == light.type.tr,]
+# median.irr.all.norm <- fig.light.and.median(irr.t2, wave.length.range, 2, "irr.all.smooth.norm")
+# write.csv(median.irr.all.norm, paste(path.output.data.subdir[1],"median.irr.all.norm.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# 
+# # ** selection **
+# # raw
+# irr.t3 <- irr.all.smooth.s[irr.all.smooth.s$depth == irr.depth & irr.all.smooth.s$light == light.type.tr,]
+# median.irr.s <- fig.light.and.median(irr.t3, wave.length.range, 1, "irr.s.smooth.")
+# write.csv(median.irr.s, paste(path.output.data.subdir[1],"median.irr.s.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# # norm
+# irr.t4 <- irr.all.smooth.norm.s[irr.all.smooth.norm.s$depth == irr.depth & irr.all.smooth.norm.s$light == light.type.tr,]
+# median.irr.s.norm <- fig.light.and.median(irr.t4, wave.length.range, 2, "irr.s.smooth.norm")
+# write.csv(median.irr.s.norm, paste(path.output.data.subdir[1],"median.irr.s.norm.light_",light.type.tr,".excl.bottom_",exclude.bottom,".depth_",irr.depth,".w_",window.w,".csv",sep = ""), row.names = FALSE)
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# 
 
 
 

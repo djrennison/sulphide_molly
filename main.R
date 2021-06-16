@@ -28,6 +28,7 @@ library(CCA)
 library(MASS)
 library(LMERConvenienceFunctions)
 library(Hmisc)
+library(PNWColors)
 
 
 
@@ -80,11 +81,13 @@ opsin.col <- c("red","red","red","red","green","green","blue","blue","purple")
 
 # for the irradiance.R files
 wavelength.irr <- c(350:700)  # wavelength range of the irradiance measurements || depends on calib files
-window.w <- 10                # width of the window for the rolling mean
+window.w <- 5               # width of the window for the rolling mean
 
 UV.blue <- c(301:400)         # green orange from Brock et al => they start at 300, but does not match our calib file
 gre.or <- c(501:600)          # green orange from Brock et al
 
+meta_data <- read_csv("data/meta_data/site_meta_data.csv")
+color_palette_1 <- pnw_palette(name="Bay",n=2,type="discrete")
 
 
 
